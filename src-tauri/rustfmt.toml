@@ -1,0 +1,4 @@
+# Un poco más ancho que el default (100): con nombres en español y comentarios de contexto,
+# 100 columnas parte firmas y cadenas que se leen mejor enteras.
+max_width = 110
+use_small_heuristics = "Max"

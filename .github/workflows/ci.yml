@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # Un push nuevo sobre la misma rama invalida la corrida anterior: no tiene sentido pagar
+  # minutos de runner por validar un commit que ya quedó atrás.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (typecheck + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      # El bundle es el insumo del humo de UI; subirlo evita reconstruirlo en el otro job.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 3
+
+  ui-smoke:
+    name: Humo de UI
+    needs: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # Monta el puente IPC de Tauri con respuestas falsas y recorre todas las vistas: detecta
+      # componentes que revientan al montar, que el typecheck no ve.
+      - name: Recorrer las vistas
+        run: node scripts/ui_smoke.mjs .ui-smoke
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capturas-ui
+          path: .ui-smoke
+          retention-days: 7
+
+  rust:
+    name: Rust (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Las dos plataformas que la app soporta. Windows y macOS compilan rutas distintas
+        # (`paths.rs`, `resolve_binary`, backend de keyring), así que validar solo una dejaría
+        # la otra sin cubrir.
+        platform: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Formato
+        working-directory: src-tauri
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests
+        working-directory: src-tauri
+        run: cargo test --all-targets

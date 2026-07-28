@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    # Solo dispara cuando cambia la versión, no en cada commit a main.
+    paths: [package.json]
+  workflow_dispatch:
+
+jobs:
+  check-version:
+    name: ¿Hay versión nueva?
+    runs-on: ubuntu-latest
+    outputs:
+      should-release: ${{ steps.check.outputs.should-release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `git rev-parse` necesita los tags para saber si esta versión ya se publicó.
+          fetch-depth: 0
+
+      - id: check
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+            echo "El tag v$VERSION ya existe — no se publica."
+          else
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+            echo "Versión nueva v$VERSION — se compila y publica."
+          fi
+
+  release:
+    name: Compilar y publicar (${{ matrix.platform }})
+    needs: check-version
+    if: needs.check-version.outputs.should-release == 'true'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows 11 x86-64: el runner es x86_64, así que el target explícito documenta la
+          # intención y evita que un cambio de runner cambie la arquitectura sin avisar.
+          - platform: windows-latest
+            args: "--target x86_64-pc-windows-msvc"
+          # macOS universal: un solo .dmg que corre nativo en Intel y en Apple Silicon.
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - if: matrix.platform == 'macos-latest'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - if: matrix.platform == 'windows-latest'
+        run: rustup target add x86_64-pc-windows-msvc
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # `beforeBuildCommand` corre `vite build`, que empaqueta Mermaid (varios MB) y puede
+          # pasarse del heap por defecto de Node en el runner de macOS. El runner tiene 7 GB, así
+          # que 4 GB es holgura sin arriesgar swap.
+          NODE_OPTIONS: --max-old-space-size=4096
+          # Firma del updater — necesaria para que la app pueda verificar e instalar
+          # actualizaciones. Genera la llave con `pnpm tauri signer generate -w ~/.tauri/archflow.key`
+          # y agrega UN secreto del repositorio (Settings › Secrets and variables › Actions):
+          #   TAURI_SIGNING_PRIVATE_KEY → contenido de ~/.tauri/archflow.key
+          # Luego pega la pública en `src-tauri/tauri.conf.json` → plugins.updater.pubkey.
+          # Si generas la llave CON contraseña, mueve la línea de abajo a otro secreto.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          tagName: v${{ needs.check-version.outputs.version }}
+          releaseName: ArchFlow v${{ needs.check-version.outputs.version }}
+          releaseBody: Revisa el historial de commits para ver qué cambió en esta versión.
+          # Publicada (no borrador) para que el endpoint del updater
+          # `releases/latest/download/latest.json` resuelva — los borradores no se sirven ahí.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

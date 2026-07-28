@@ -1,0 +1,59 @@
+[package]
+name = "archflow"
+version = "0.1.0"
+description = "ArchFlow — asistente de decisiones de arquitectura de software"
+authors = ["Sebastián Rodríguez"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "archflow_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-os = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+git2 = "0.19"
+rusqlite = { version = "0.32", features = ["bundled"] }
+keyring = "3"
+tokio = { version = "1", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+dirs = "5"
+open = "5"
+
+# `keyring` ships with no OS credential-store backend enabled by default — without one
+# of these, Entry::set_password()/get_password() silently round-trip through a
+# non-persistent stub (writes "succeed", reads come back empty).
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+# The universal-apple-darwin release build cross-compiles the x86_64 slice on an
+# aarch64 GitHub runner; git2's default OpenSSL backend then fails to find a
+# matching OpenSSL via pkg-config for the non-host target ("could not find
+# directory of OpenSSL installation"). Scoped to macOS only (not Windows/Linux)
+# so local dev builds don't need Perl/NASM to build OpenSSL from source.
+git2 = { version = "0.19", features = ["vendored-openssl"] }
+
+[profile.release]
+# Desktop bundle size matters more than the last few % of runtime speed here — the app
+# spends its time waiting on a subprocess, not in Rust.
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
