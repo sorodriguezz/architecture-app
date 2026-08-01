@@ -12,6 +12,7 @@ const FAMILY_ORDER = [
   "concurrencia",
   "datos",
   "integracion",
+  "observabilidad",
   "seguridad",
   "despliegue",
 ];

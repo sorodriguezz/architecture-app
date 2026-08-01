@@ -1,6 +1,14 @@
 import { create } from "zustand";
 
-export type View = "projects" | "new-decision" | "decision" | "docs" | "patterns" | "settings";
+export type View =
+  | "projects"
+  | "new-decision"
+  | "decision"
+  | "model"
+  | "docs"
+  | "patterns"
+  | "simulators"
+  | "settings";
 
 export interface Toast {
   id: string;
@@ -8,12 +16,26 @@ export interface Toast {
   message: string;
 }
 
+/** Estado del catálogo de patrones. Vive aquí porque el wizard navega hacia él ya filtrado. */
+export interface PatternsFilter {
+  query: string;
+  family: string | null;
+  /** Atributo de calidad por el que filtrar: muestra solo los patrones que lo empujan. */
+  driver: string | null;
+}
+
+const NO_FILTER: PatternsFilter = { query: "", family: null, driver: null };
+
 interface UiState {
   view: View;
   theme: "dark" | "light";
   toasts: Toast[];
   /** Panel lateral de log en vivo, compartido por todas las corridas. */
   logOpen: boolean;
+  patternsFilter: PatternsFilter;
+  setPatternsFilter: (filter: Partial<PatternsFilter>) => void;
+  /** Abre el catálogo ya filtrado — el puente entre elegir un driver y ver qué patrones lo dan. */
+  openPatterns: (filter: Partial<PatternsFilter>) => void;
   setView: (view: View) => void;
   setTheme: (theme: "dark" | "light") => void;
   toggleTheme: () => void;
@@ -27,6 +49,11 @@ export const useUiStore = create<UiState>((set, get) => ({
   theme: "dark",
   toasts: [],
   logOpen: false,
+  patternsFilter: NO_FILTER,
+
+  setPatternsFilter: (filter) => set((s) => ({ patternsFilter: { ...s.patternsFilter, ...filter } })),
+
+  openPatterns: (filter) => set({ view: "patterns", patternsFilter: { ...NO_FILTER, ...filter } }),
 
   setView: (view) => set({ view }),
 

@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
-use super::models::{Decision, DecisionSummary, McpServer, Project, Skill};
+use super::models::{Decision, DecisionSummary, McpServer, ModelElement, Project, Skill};
 use super::{new_id, now};
 
 // ---------- settings ----------
@@ -280,5 +280,93 @@ pub fn set_skill_enabled(conn: &Connection, id: &str, enabled: bool) -> rusqlite
 
 pub fn delete_skill(conn: &Connection, id: &str) -> rusqlite::Result<()> {
     conn.execute("DELETE FROM skills WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+// ---------- modelo del sistema ----------
+
+fn row_to_element(r: &Row) -> rusqlite::Result<ModelElement> {
+    Ok(ModelElement {
+        id: r.get("id")?,
+        project_id: r.get("project_id")?,
+        kind: r.get("kind")?,
+        name: r.get("name")?,
+        summary: r.get("summary")?,
+        status: r.get("status")?,
+        tech: r.get("tech")?,
+        owner: r.get("owner")?,
+        parent_id: r.get("parent_id")?,
+        source: r.get("source")?,
+        decision_id: r.get("decision_id")?,
+        depends_on: r.get("depends_on")?,
+        location: r.get("location")?,
+        notes: r.get("notes")?,
+        created_at: r.get("created_at")?,
+        updated_at: r.get("updated_at")?,
+    })
+}
+
+pub fn list_model_elements(conn: &Connection, project_id: &str) -> rusqlite::Result<Vec<ModelElement>> {
+    let mut stmt = conn.prepare("SELECT * FROM model_elements WHERE project_id = ?1 ORDER BY kind, name")?;
+    let rows = stmt.query_map(params![project_id], row_to_element)?;
+    rows.collect()
+}
+
+pub fn upsert_model_element(conn: &Connection, e: &ModelElement) -> rusqlite::Result<ModelElement> {
+    let id = if e.id.trim().is_empty() { new_id() } else { e.id.clone() };
+    let ts = now();
+    // `created_at` se conserva en el update: es la fecha en que la pieza entró al modelo, y
+    // perderla al editar el resumen borraría la única traza de cuándo apareció.
+    conn.execute(
+        "INSERT INTO model_elements(id, project_id, kind, name, summary, status, tech, owner,
+                                    parent_id, source, decision_id, depends_on, location, notes,
+                                    created_at, updated_at)
+         VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)
+         ON CONFLICT(id) DO UPDATE SET
+            kind = excluded.kind, name = excluded.name, summary = excluded.summary,
+            status = excluded.status, tech = excluded.tech, owner = excluded.owner,
+            parent_id = excluded.parent_id, source = excluded.source,
+            decision_id = excluded.decision_id, depends_on = excluded.depends_on,
+            location = excluded.location, notes = excluded.notes, updated_at = excluded.updated_at",
+        params![
+            id,
+            e.project_id,
+            e.kind,
+            e.name,
+            e.summary,
+            e.status,
+            e.tech,
+            e.owner,
+            e.parent_id,
+            e.source,
+            e.decision_id,
+            e.depends_on,
+            e.location,
+            e.notes,
+            ts
+        ],
+    )?;
+    conn.query_row("SELECT * FROM model_elements WHERE id = ?1", params![id], row_to_element)
+}
+
+pub fn delete_model_element(conn: &Connection, id: &str) -> rusqlite::Result<()> {
+    // `parent_id` lo limpia la foreign key (ON DELETE SET NULL), pero `depends_on` es texto y
+    // SQLite no lo toca: sin esto quedarían ids apuntando a una pieza que ya no existe, y el
+    // diagrama perdería esas flechas en silencio la próxima vez que se cargue el modelo.
+    let stale: Vec<(String, String)> = {
+        let mut stmt =
+            conn.prepare("SELECT id, depends_on FROM model_elements WHERE depends_on LIKE '%' || ?1 || '%'")?;
+        let rows = stmt.query_map(params![id], |r| Ok((r.get("id")?, r.get("depends_on")?)))?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    for (row_id, deps) in stale {
+        let cleaned: Vec<&str> = deps.lines().map(str::trim).filter(|d| !d.is_empty() && *d != id).collect();
+        conn.execute(
+            "UPDATE model_elements SET depends_on = ?2 WHERE id = ?1",
+            params![row_id, cleaned.join("\n")],
+        )?;
+    }
+
+    conn.execute("DELETE FROM model_elements WHERE id = ?1", params![id])?;
     Ok(())
 }

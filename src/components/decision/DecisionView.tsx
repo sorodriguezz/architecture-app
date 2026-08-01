@@ -17,7 +17,8 @@ import * as api from "../../lib/tauri/commands";
 import { useDecisionStore } from "../../state/decisionStore";
 import { useProjectStore } from "../../state/projectStore";
 import { useUiStore } from "../../state/uiStore";
-import { BouncingDots, EmptyState } from "../common/Ui";
+import type { DecisionMeta } from "../../types/domain";
+import { BouncingDots, EmptyState, Meter } from "../common/Ui";
 import { DiagramsPanel } from "../diagrams/DiagramsPanel";
 import { PatternsPanel } from "./PatternsPanel";
 import { RefinePanel } from "./RefinePanel";
@@ -155,8 +156,14 @@ export function DecisionView() {
               onClick={() => setTab(t.id)}
             >
               <t.icon size={14} /> {t.label}
+              {t.id === "tradeoff" && (meta?.options.length ?? 0) > 0 && (
+                <span className="chip px-1.5 py-0 text-[10px]">{meta?.options.length}</span>
+              )}
               {t.id === "diagrams" && (parsed?.diagrams.length ?? 0) > 0 && (
                 <span className="chip px-1.5 py-0 text-[10px]">{parsed?.diagrams.length}</span>
+              )}
+              {t.id === "patterns" && (meta?.patterns.length ?? 0) > 0 && (
+                <span className="chip px-1.5 py-0 text-[10px]">{meta?.patterns.length}</span>
               )}
               {t.id === "risks" && (meta?.risks.length ?? 0) > 0 && (
                 <span className="chip px-1.5 py-0 text-[10px]">{meta?.risks.length}</span>
@@ -165,6 +172,11 @@ export function DecisionView() {
           ))}
         </nav>
       </header>
+
+      {/* La recomendación acompaña a todas las pestañas: mirando un diagrama o un riesgo, lo que
+          uno necesita tener a la vista es contra qué decisión lo está evaluando. En Trade-offs no
+          se repite porque ahí ya está en grande. */}
+      {meta && tab !== "tradeoff" && !editing && <DecisionSummary meta={meta} onOpenMatrix={() => setTab("tradeoff")} />}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         {parsed?.metaError && tab !== "doc" && (
@@ -213,6 +225,34 @@ export function DecisionView() {
         {tab === "refine" && <RefinePanel decisionId={current.id} />}
       </div>
     </div>
+  );
+}
+
+function DecisionSummary({ meta, onOpenMatrix }: { meta: DecisionMeta; onOpenMatrix: () => void }) {
+  const recommended = meta.options.find((o) => o.recommended);
+
+  return (
+    <section
+      className="flex shrink-0 items-center gap-4 border-b border-line px-6 py-2.5"
+      style={{ background: "var(--accent-soft)" }}
+    >
+      <span className="text-[10px] font-semibold tracking-wide text-accent-text uppercase">Recomendación</span>
+      <p className="selectable min-w-0 flex-1 truncate text-[13px] font-medium text-ink" title={meta.decision}>
+        {meta.decision}
+      </p>
+      {recommended && (
+        <button className="chip chip-on shrink-0 cursor-pointer" onClick={onOpenMatrix} title="Ver la matriz completa">
+          {recommended.name}
+        </button>
+      )}
+      <span className="flex shrink-0 items-center gap-2 text-[11.5px] text-muted">
+        confianza
+        <span className="w-16">
+          <Meter value={meta.confidence} tone={meta.confidence >= 70 ? "success" : "warning"} />
+        </span>
+        <span className="font-semibold text-ink">{meta.confidence}%</span>
+      </span>
+    </section>
   );
 }
 

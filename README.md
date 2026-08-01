@@ -14,10 +14,13 @@ ni servidor propio: la app usa la sesión que ya tienes en la CLI.
 
 ## Qué hace
 
-1. **Capturas el contexto** en un asistente de cuatro pasos: problema de negocio, objetivos,
-   estado actual, restricciones, escala, equipo, cumplimiento y presupuesto.
+1. **Capturas el contexto** en un asistente de cinco pasos: problema de negocio, objetivos,
+   estado actual, restricciones, escala, equipo, cumplimiento y presupuesto. El borrador se
+   guarda solo, así que se puede ir a consultar el catálogo a mitad de camino sin perderlo.
 2. **Priorizas los drivers**: eliges atributos de calidad y les das un peso de 1 a 5. Ese peso es
-   literalmente el que pondera la matriz — no es decorativo.
+   literalmente el que pondera la matriz — no es decorativo. La app te muestra qué patrones
+   empuja cada driver y **dónde vas a tener que ceder**: los pares que tiran en direcciones
+   opuestas, medidos sobre el catálogo.
 3. **ArchFlow analiza** con Claude Code, que puede leer tu repositorio para conocer el stack real
    antes de recomendar.
 4. **Obtienes un documento completo** con seis vistas:
@@ -34,9 +37,38 @@ ni servidor propio: la app usa la sesión que ya tienes en la CLI.
 5. **Se guarda y publica**: el `.md` va a `docs/architecture/ADR-NNN-<slug>.md` del proyecto, con
    commit y push desde la app.
 
-Además trae un **catálogo de 100 patrones** consultable sin gastar una corrida de IA —
-arquitectónicos, de diseño, resiliencia, concurrencia, datos, integración, seguridad y despliegue —
-cada uno con el problema que resuelve y lo que cuesta usarlo.
+Antes de ejecutar, el paso de **Revisar** muestra qué se va a enviar y qué va a tener que suponer
+el análisis por cada campo que dejaste vacío — con la consecuencia concreta, no un asterisco rojo.
+Mientras corre, la vista muestra la etapa estimada y la actividad real de la CLI (qué archivos está
+leyendo, cuánto lleva escrito) en vez del volcado JSON.
+
+### Simuladores
+
+Dos simuladores que responden la misma pregunta —si la arquitectura aguanta— en dos escalas
+distintas, y que corren enteros en la app sin gastar una corrida de IA:
+
+- **Carga.** Simulación por eventos discretos sobre la topología que armes: peticiones
+  individuales que compiten por servidores, hacen cola, se agotan por timeout y se reintentan. Con
+  un catálogo de ~40 componentes —RabbitMQ, Kafka, NATS, Redis Streams, PostgreSQL y los
+  gestionados de **AWS, Azure y GCP**— cada uno con el límite que en la práctica termina mandando
+  (particiones de Kafka, concurrencia de cuenta de Lambda, RU/s de Cosmos, shards de Kinesis…).
+  Devuelve latencia p50/p95/p99 separando la respuesta al llamador de la de extremo a extremo,
+  utilización por etapa, backlog en el tiempo y un diagnóstico de dónde está el cuello. Con la
+  misma semilla, la misma configuración da siempre el mismo resultado.
+- **Estructura de directorios.** Proyecta cómo envejece una organización de carpetas —por capas,
+  hexagonal, vertical slices, monolito modular, repositorio por servicio o monorepo— a medida que
+  el proyecto suma módulos y equipos. Muestra el árbol resultante en el mes que elijas y las tres
+  cosas que se sienten al trabajar: cuántos archivos se acumulan en el peor directorio, cuántas
+  carpetas hay que tocar para un cambio, y qué fracción del código vive en carpetas sin dueño
+  único.
+
+Los valores por defecto de ambos son órdenes de magnitud editables, no mediciones de tu sistema.
+
+Además trae un **catálogo de 124 patrones** consultable sin gastar una corrida de IA —
+arquitectónicos, de diseño, resiliencia, concurrencia, datos, integración, observabilidad,
+seguridad y despliegue — cada uno con el problema que resuelve, lo que cuesta usarlo y **qué
+atributos de calidad mueve en cada dirección**, para poder entrar por "necesito resiliencia" y
+salir con los patrones que la dan.
 
 ---
 
@@ -61,6 +93,7 @@ pnpm tauri dev        # app en caliente
 pnpm typecheck        # tsc --noEmit
 pnpm build            # bundle de producción del frontend
 node scripts/ui_smoke.mjs   # recorre las vistas con el IPC simulado y toma capturas
+node scripts/gen_icons.mjs  # regenera la marca: public/archflow.svg + src-tauri/icons/*
 
 cd src-tauri
 cargo fmt --all --check
@@ -86,14 +119,26 @@ src/                        Frontend — React 19 + Vite 7 + Tailwind 4 + zustan
     intake/                 Asistente de captura del brief
     decision/               Resultado: matriz, patrones, riesgos, refinamiento
     diagrams/               Render de Mermaid
+    simulator/              Simuladores de carga y de estructura de directorios
     docs/                   Árbol y editor de .md, catálogo de patrones
     settings/               Motor de IA, prompts, skills, MCP, git, datos
   lib/
-    catalog.ts              Catálogo de patrones y atributos de calidad
+    catalog.ts              Patrones, atributos de calidad y la relación entre ambos
+    briefStatus.ts          Completitud del brief y qué implica cada hueco
+    runProgress.ts          Reduce el stream de la CLI a etapa y actividad
+    simulation/
+      components.ts         Catálogo de componentes (OSS, AWS, Azure, GCP) y sus límites
+      engine.ts             Motor de eventos discretos: colas, timeouts, reintentos
+      presets.ts            Topologías de arranque
+      structure.ts          Crecimiento de la estructura de directorios
     parseDecision.ts        Parseo del contrato de salida del modelo
     mermaid.ts              Carga diferida y render de diagramas
     tauri/                  Envoltorios tipados de los comandos e eventos
   state/                    Stores de zustand
+
+scripts/
+  gen_icons.mjs             Fuente de la marca: SVG → public/ + iconos del instalador
+  ui_smoke.mjs              Humo de UI con el IPC de Tauri simulado
 
 src-tauri/                  Backend — Rust + Tauri 2
   src/

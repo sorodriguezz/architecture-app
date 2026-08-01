@@ -7,7 +7,7 @@
 //! riesgos, y extrae cada fence ` ```mermaid ` como un diagrama con el título del encabezado
 //! inmediatamente anterior. Cambiar esos marcadores rompe el render en silencio.
 
-use crate::db::models::DecisionBrief;
+use crate::db::models::{DecisionBrief, ModelElement};
 
 /// Persona y método. Va en `--append-system-prompt`, así que se suma a las instrucciones propias
 /// de la CLI en vez de reemplazarlas.
@@ -59,7 +59,7 @@ Devuelve EXACTAMENTE esta estructura, en este orden y con estos encabezados lite
     }
   ],
   "patterns": [
-    { "name": "<Nombre del patrón>", "family": "<arquitectonico|diseno|resiliencia|concurrencia|datos|integracion|seguridad|despliegue>", "why": "<por qué aquí>", "where": "<en qué componente>" }
+    { "name": "<Nombre del patrón>", "family": "<arquitectonico|diseno|resiliencia|concurrencia|datos|integracion|observabilidad|seguridad|despliegue>", "why": "<por qué aquí>", "where": "<en qué componente>" }
   ],
   "risks": [
     { "id": "R-01", "title": "<…>", "impact": "<bajo|medio|alto>", "probability": "<baja|media|alta>", "mitigation": "<…>" }
@@ -127,8 +127,9 @@ Agrupa por familia con un `###` por familia. Para cada patrón: qué problema re
 - **De resiliencia**: circuit breaker, retry con backoff exponencial y jitter, timeout, bulkhead, rate limiting, throttling, fallback, cache-aside, idempotencia, dead letter queue, outbox transaccional, health check, graceful degradation, load shedding.
 - **De concurrencia y paralelismo**: worker pool, productor-consumidor, actor model, fork-join, pipeline, leader election, optimistic/pessimistic locking, CAS, read-write lock, backpressure, batching, sharding por clave, particionado consistente.
 - **De datos**: read replicas, sharding, CDC, materialized view, polyglot persistence, cache multinivel, índices y desnormalización dirigida, versionado de esquema, migración expand-contract.
-- **De integración**: request-reply, publish-subscribe, message router, content-based routing, anti-corruption layer, contract testing, versionado de API.
-- **De seguridad**: defensa en profundidad, mínimo privilegio, zero trust, secretos externalizados, cifrado en tránsito y reposo, rotación de credenciales, auditoría.
+- **De integración**: request-reply, publish-subscribe, message router, content-based routing, anti-corruption layer, coreografía vs orquestación, registro de esquemas, contract testing, versionado de API.
+- **De observabilidad**: identificador de correlación, trazas distribuidas, logs estructurados, métricas RED y USE, SLO con presupuesto de error, alertas por síntoma, muestreo adaptativo. Una integración externa o un flujo asíncrono sin forma de reconstruir qué pasó es un hallazgo, no un detalle.
+- **De seguridad**: defensa en profundidad, mínimo privilegio, zero trust, mTLS entre servicios, secretos externalizados, cifrado en tránsito y reposo, rotación de credenciales, firma de artefactos, auditoría.
 No listes patrones porque sí: si uno no aplica, no lo menciones. Si uno se descartó deliberadamente, dilo en "Alternativas descartadas".
 
 ## Riesgos y mitigaciones
@@ -195,16 +196,169 @@ Elige el tipo de diagrama que mejor represente lo descrito: `flowchart` para est
 
 El diagrama debe ser Mermaid válido: encierra en comillas dobles cualquier etiqueta que contenga paréntesis, comas, dos puntos o guiones."#;
 
+/// Contrato de salida compartido por el escaneo del repositorio y la extracción desde una
+/// decisión. Vive en una constante y no repetido en los dos prompts porque `parseModel.ts` parsea
+/// exactamente este bloque: cambiarlo en un solo prompt haría que la mitad de las propuestas
+/// llegaran vacías sin ningún error visible.
+///
+/// `parent` y `dependsOn` van por **nombre** y no por id porque el modelo no conoce los ids de la
+/// base; el frontend los resuelve al aceptar la propuesta.
+const MODEL_CONTRACT: &str = r#"Devuelve ÚNICAMENTE un bloque de código con este formato exacto, sin texto antes ni después:
+
+```json archflow-model
+{
+  "schemaVersion": 1,
+  "elements": [
+    {
+      "kind": "component",
+      "name": "Servicio de pagos",
+      "summary": "Qué es y de qué se hace cargo, en una línea.",
+      "status": "produccion",
+      "tech": "ASP.NET Core 8",
+      "owner": "",
+      "parent": null,
+      "dependsOn": ["Base transaccional"],
+      "location": "src/Pagos",
+      "notes": "Lo que no cabe en el resumen: SLA, qué pasa si se cae, por qué está así."
+    }
+  ]
+}
+```
+
+Reglas del bloque:
+- `kind` es uno de: `component` (un servicio, módulo, front, base de datos o cola desplegable), `endpoint` (una operación que expone un componente), `integration` (un sistema externo del que dependes), `entity` (un concepto de datos con dueño claro) o `debt` (algo que sabes que está mal y hay que arreglar).
+- `name` de un endpoint incluye el verbo y la ruta: `POST /api/ordenes`.
+- `status` es uno de: `propuesto`, `construccion`, `produccion`, `deprecado`. Si no puedes determinarlo, usa `produccion` para lo que encuentres en el código y `propuesto` para lo que todavía no existe.
+- `parent` es el nombre EXACTO del componente al que pertenece la pieza, o `null`. Los endpoints y las entidades siempre deben tener uno.
+- `dependsOn` son nombres EXACTOS de otros elementos (de esta lista o del modelo actual). Es lo que dibuja las flechas del diagrama; si no estás seguro, deja el arreglo vacío en vez de inventar.
+- `owner` solo si el repositorio lo dice (CODEOWNERS, README). Si no, cadena vacía.
+- `location` es la ruta relativa dentro del repositorio. Vacío si no aplica.
+- Nada de relleno: si algo no lo sabes, deja la cadena vacía. Un dato inventado en el modelo del sistema contamina todas las decisiones que vengan después."#;
+
+/// Escaneo del repositorio: leer el código real y proponer el inventario que hay en él.
+pub const DEFAULT_SCAN_PROMPT: &str = r#"Por stdin recibes el MODELO DEL SISTEMA que ArchFlow ya tiene registrado para este proyecto (puede estar vacío).
+
+Tu tarea es leer el repositorio en el que estás y proponer las piezas que faltan en ese modelo.
+
+Cómo buscar, en este orden:
+1. La forma del repositorio: archivos de proyecto/manifiestos, carpetas de primer y segundo nivel, docker-compose, manifiestos de despliegue. De ahí salen los COMPONENTES.
+2. Controladores, rutas, handlers y definiciones de API. De ahí salen los ENDPOINTS, colgando de su componente.
+3. Clientes HTTP, SDKs de terceros, cadenas de conexión y variables de entorno que apunten fuera. De ahí salen las INTEGRACIONES.
+4. Entidades, modelos, esquemas y migraciones. De ahí salen las ENTIDADES, solo las que son conceptos de negocio — no una fila por tabla auxiliar.
+5. `TODO`, `FIXME`, `HACK`, workarounds comentados y duplicación evidente. De ahí sale la DEUDA, solo lo que un líder técnico querría tener anotado.
+
+Reglas:
+- NO repitas elementos que ya están en el modelo actual con el mismo nombre. Solo propón lo que falta o lo que cambió.
+- Prefiere pocas piezas correctas a muchas dudosas. Este inventario alimenta todas las decisiones futuras.
+- Si el repositorio está vacío o no se parece a un proyecto de software, devuelve el bloque con `"elements": []`.
+
+"#;
+
+/// Extracción desde una decisión ya generada: qué le agrega este ADR al sistema.
+pub const DEFAULT_EXTRACT_PROMPT: &str = r#"Por stdin recibes el MODELO DEL SISTEMA actual del proyecto y un DOCUMENTO DE DECISIÓN de arquitectura recién aprobado.
+
+Tu tarea es determinar qué le agrega o le cambia esa decisión al sistema.
+
+Qué extraer:
+- Los componentes nuevos que la opción recomendada introduce.
+- Los endpoints o contratos nuevos que aparecen en la decisión.
+- Las integraciones externas nuevas.
+- Las entidades de datos nuevas o significativamente modificadas.
+- La deuda que la decisión reconoce explícitamente que deja (consecuencias negativas asumidas, mitigaciones pendientes).
+
+Reglas:
+- Basa todo SOLO en la opción recomendada. Las alternativas descartadas no existen en el sistema.
+- Usa `"status": "propuesto"` para todo lo que la decisión introduce: todavía no está construido.
+- NO repitas lo que ya está en el modelo actual con el mismo nombre.
+- Si la decisión no cambia la estructura del sistema (por ejemplo, decidió no hacer nada), devuelve el bloque con `"elements": []`.
+
+"#;
+
+/// El modelo del sistema como prosa, para inyectarlo en el contexto de cualquier corrida.
+///
+/// Es lo que le da memoria a la app: sin esto, cada análisis empieza de cero y propone una cola
+/// de eventos que ya existe desde hace tres decisiones.
+pub fn render_model(elements: &[ModelElement]) -> String {
+    if elements.is_empty() {
+        return String::new();
+    }
+
+    let by_id = |id: &str| elements.iter().find(|e| e.id == id);
+    let mut s = String::with_capacity(2048);
+
+    for (kind, heading) in [
+        ("component", "COMPONENTES"),
+        ("endpoint", "ENDPOINTS EXPUESTOS"),
+        ("integration", "INTEGRACIONES EXTERNAS"),
+        ("entity", "ENTIDADES DE DATOS"),
+        ("debt", "DEUDA TÉCNICA CONOCIDA"),
+    ] {
+        let group: Vec<&ModelElement> = elements.iter().filter(|e| e.kind == kind).collect();
+        if group.is_empty() {
+            continue;
+        }
+        s.push_str(&format!("### {heading}\n\n"));
+        for e in group {
+            s.push_str(&format!("- **{}** ({})", e.name, e.status));
+            if !e.tech.trim().is_empty() {
+                s.push_str(&format!(" · {}", e.tech.trim()));
+            }
+            if let Some(parent) = e.parent_id.as_deref().and_then(by_id) {
+                s.push_str(&format!(" · pertenece a {}", parent.name));
+            }
+            if !e.summary.trim().is_empty() {
+                s.push_str(&format!(" — {}", e.summary.trim()));
+            }
+            let deps: Vec<&str> =
+                e.depends_on.lines().filter_map(|id| by_id(id.trim())).map(|d| d.name.as_str()).collect();
+            if !deps.is_empty() {
+                s.push_str(&format!(" · depende de: {}", deps.join(", ")));
+            }
+            if !e.notes.trim().is_empty() {
+                s.push_str(&format!(" · {}", e.notes.trim()));
+            }
+            s.push('\n');
+        }
+        s.push('\n');
+    }
+
+    s
+}
+
+/// El contrato de salida del modelo, para que los comandos lo agreguen al final del prompt que el
+/// usuario pueda haber personalizado. Va aparte para que editar el prompt en Ajustes no pueda
+/// romper el formato que la app parsea.
+pub fn model_contract() -> &'static str {
+    MODEL_CONTRACT
+}
+
 /// Arma el texto que se manda por stdin a partir del brief. Es prosa etiquetada y no JSON a
 /// propósito: los modelos siguen mejor un brief legible que un objeto, y así el usuario puede
 /// leer exactamente lo que se envió cuando el resultado no le cuadra.
-pub fn build_brief_payload(brief: &DecisionBrief, project_context: &str, repo_hint: Option<&str>) -> String {
+pub fn build_brief_payload(
+    brief: &DecisionBrief,
+    project_context: &str,
+    system_model: &str,
+    repo_hint: Option<&str>,
+) -> String {
     let mut s = String::with_capacity(4096);
     s.push_str("# BRIEF DE ARQUITECTURA\n\n");
 
     section(&mut s, "DECISIÓN A TOMAR", &brief.title);
     if !project_context.trim().is_empty() {
         section(&mut s, "CONTEXTO PERMANENTE DEL PROYECTO", project_context);
+    }
+    // El inventario va antes del problema a propósito: lo primero que tiene que quedar claro es
+    // qué existe ya, para que la recomendación reutilice en vez de duplicar.
+    if !system_model.trim().is_empty() {
+        s.push_str("## MODELO DEL SISTEMA ACTUAL\n\n");
+        s.push_str(
+            "Estas piezas ya existen o ya están decididas. Reutilízalas: proponer una segunda cola, \
+             una segunda base o un segundo servicio que hace lo mismo que uno de estos es un error, \
+             y si de verdad hace falta duplicar, justifícalo explícitamente.\n\n",
+        );
+        s.push_str(system_model.trim());
+        s.push_str("\n\n");
     }
     section(&mut s, "PROBLEMA DE NEGOCIO", &brief.problem);
     section(&mut s, "QUÉ SE NECESITA CONSEGUIR", &brief.goals);
@@ -284,7 +438,7 @@ mod tests {
     #[test]
     fn empty_sections_are_omitted_entirely() {
         let brief = DecisionBrief { title: "Elegir mensajería".into(), ..Default::default() };
-        let payload = build_brief_payload(&brief, "", None);
+        let payload = build_brief_payload(&brief, "", "", None);
         assert!(payload.contains("DECISIÓN A TOMAR"));
         // Un encabezado con el cuerpo vacío solo gastaría contexto y le diría al modelo que hay
         // una sección que en realidad no existe.
@@ -303,7 +457,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let payload = build_brief_payload(&brief, "", None);
+        let payload = build_brief_payload(&brief, "", "", None);
         assert!(payload.contains("**Disponibilidad** (peso 5): 99.95% mensual"));
     }
 
@@ -318,8 +472,69 @@ mod tests {
             }],
             ..Default::default()
         };
-        let payload = build_brief_payload(&brief, "", None);
+        let payload = build_brief_payload(&brief, "", "", None);
         assert!(payload.contains("proponlo tú"));
+    }
+
+    fn element(kind: &str, id: &str, name: &str) -> ModelElement {
+        ModelElement {
+            id: id.into(),
+            project_id: "p".into(),
+            kind: kind.into(),
+            name: name.into(),
+            summary: String::new(),
+            status: "produccion".into(),
+            tech: String::new(),
+            owner: String::new(),
+            parent_id: None,
+            source: "manual".into(),
+            decision_id: None,
+            depends_on: String::new(),
+            location: String::new(),
+            notes: String::new(),
+            created_at: String::new(),
+            updated_at: String::new(),
+        }
+    }
+
+    /// El modelo guarda ids, pero el modelo de lenguaje solo puede razonar sobre nombres: si las
+    /// referencias llegaran como `e1`/`e2`, el análisis no tendría forma de saber qué depende de qué.
+    #[test]
+    fn the_rendered_model_resolves_references_to_names() {
+        let mut api = element("component", "e1", "API de pagos");
+        api.depends_on = "e2".into();
+        let db = element("component", "e2", "Base transaccional");
+        let mut endpoint = element("endpoint", "e3", "POST /api/ordenes");
+        endpoint.parent_id = Some("e1".into());
+
+        let rendered = render_model(&[api, db, endpoint]);
+        assert!(rendered.contains("depende de: Base transaccional"));
+        assert!(rendered.contains("pertenece a API de pagos"));
+        assert!(!rendered.contains("e1"));
+    }
+
+    /// Sin piezas registradas no se emite encabezado: una sección "MODELO DEL SISTEMA ACTUAL"
+    /// vacía le diría al modelo que el sistema no tiene nada, que no es lo mismo que no saberlo.
+    #[test]
+    fn an_empty_model_adds_nothing_to_the_payload() {
+        assert!(render_model(&[]).is_empty());
+        let brief = DecisionBrief { title: "t".into(), ..Default::default() };
+        assert!(!build_brief_payload(&brief, "", "", None).contains("MODELO DEL SISTEMA"));
+        assert!(build_brief_payload(&brief, "", "### COMPONENTES\n\n- **X**\n", None)
+            .contains("MODELO DEL SISTEMA ACTUAL"));
+    }
+
+    /// El bloque que `parseModel.ts` busca. Cambiar el marcador deja las propuestas de escaneo y
+    /// de extracción vacías sin ningún error: la corrida se ve exitosa y no aparece nada.
+    #[test]
+    fn the_model_contract_markers_are_present() {
+        assert!(MODEL_CONTRACT.contains("```json archflow-model"));
+        for kind in ["component", "endpoint", "integration", "entity", "debt"] {
+            assert!(MODEL_CONTRACT.contains(kind), "falta la clase {kind}");
+        }
+        for status in ["propuesto", "construccion", "produccion", "deprecado"] {
+            assert!(MODEL_CONTRACT.contains(status), "falta el estado {status}");
+        }
     }
 
     /// El contrato de salida es lo que el frontend parsea; si el marcador cambia, el render de la
@@ -329,5 +544,25 @@ mod tests {
         assert!(DEFAULT_DECISION_PROMPT.contains("```json archflow"));
         assert!(DEFAULT_DECISION_PROMPT.contains("## Matriz de trade-off"));
         assert!(DEFAULT_DECISION_PROMPT.contains("```mermaid"));
+    }
+
+    /// Las familias que el frontend sabe agrupar (`FAMILY_LABEL` en `parseDecision.ts`) tienen que
+    /// estar ofrecidas en el prompt. Si el modelo nunca emite una, su sección queda vacía; si emite
+    /// una que el frontend no conoce, los patrones caen al final bajo su id crudo.
+    #[test]
+    fn every_pattern_family_the_ui_knows_is_offered_to_the_model() {
+        for family in [
+            "arquitectonico",
+            "diseno",
+            "resiliencia",
+            "concurrencia",
+            "datos",
+            "integracion",
+            "observabilidad",
+            "seguridad",
+            "despliegue",
+        ] {
+            assert!(DEFAULT_DECISION_PROMPT.contains(family), "falta la familia {family}");
+        }
     }
 }

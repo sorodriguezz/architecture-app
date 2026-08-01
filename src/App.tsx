@@ -10,7 +10,9 @@ import { RunLogPanel } from "./components/layout/RunLogPanel";
 import { Sidebar } from "./components/layout/Sidebar";
 import { StatusBar } from "./components/layout/StatusBar";
 import { TitleBar } from "./components/layout/TitleBar";
+import { SystemModelView } from "./components/model/SystemModelView";
 import { SettingsView } from "./components/settings/SettingsView";
+import { SimulatorsView } from "./components/simulator/SimulatorsView";
 import { onRunLine } from "./lib/tauri/events";
 import { useDecisionStore } from "./state/decisionStore";
 import { useProjectStore } from "./state/projectStore";
@@ -56,8 +58,10 @@ export default function App() {
           )}
           {view === "new-decision" && <NewDecisionView />}
           {view === "decision" && <DecisionView />}
+          {view === "model" && <SystemModelView />}
           {view === "docs" && <DocsView />}
           {view === "patterns" && <PatternsView />}
+          {view === "simulators" && <SimulatorsView />}
           {view === "settings" && <SettingsView />}
         </main>
 

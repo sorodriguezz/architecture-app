@@ -4,6 +4,7 @@ import { Maximize2, Minus, Moon, Sun, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useUiStore } from "../../state/uiStore";
+import { Logo } from "../common/Logo";
 
 /**
  * Barra de título propia.
@@ -37,13 +38,7 @@ export function TitleBar() {
       style={{ background: "var(--bg-elevated)", paddingLeft: isMac ? "5.5rem" : undefined }}
     >
       <div data-tauri-drag-region className="flex items-center gap-2">
-        <div
-          className="grid h-5 w-5 place-items-center rounded-md text-[10px] font-black text-white"
-          style={{ background: "linear-gradient(160deg,#4f46e5,#7c3aed)" }}
-          aria-hidden
-        >
-          A
-        </div>
+        <Logo size={20} />
         <span data-tauri-drag-region className="text-[13px] font-semibold tracking-tight">
           ArchFlow
         </span>

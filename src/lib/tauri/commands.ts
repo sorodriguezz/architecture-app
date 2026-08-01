@@ -7,6 +7,7 @@ import type {
   DocEntry,
   EngineStatus,
   McpServer,
+  ModelElement,
   ModelOption,
   Project,
   RepoStatus,
@@ -24,6 +25,8 @@ export const SettingKey = {
   promptRefine: "prompt_refine",
   promptReview: "prompt_review",
   promptDiagram: "prompt_diagram",
+  promptScan: "prompt_scan",
+  promptExtract: "prompt_extract",
   gitName: "git_user_name",
   gitEmail: "git_user_email",
   autoCommit: "auto_commit",
@@ -75,6 +78,17 @@ export const publishDocs = (projectId: string, message: string, push: boolean) =
   invoke<string>("publish_docs", { projectId, message, push });
 export const cancelRun = (runId: string) => invoke<boolean>("cancel_run", { runId });
 
+// ---------- modelo del sistema ----------
+export const listModelElements = (projectId: string) =>
+  invoke<ModelElement[]>("list_model_elements", { projectId });
+export const upsertModelElement = (element: ModelElement) =>
+  invoke<ModelElement>("upsert_model_element", { element });
+export const deleteModelElement = (id: string) => invoke<void>("delete_model_element", { id });
+export const scanRepository = (projectId: string, runId: string) =>
+  invoke<string>("scan_repository", { projectId, runId });
+export const extractModelFromDecision = (decisionId: string, runId: string) =>
+  invoke<string>("extract_model_from_decision", { decisionId, runId });
+
 // ---------- documentos ----------
 export const listDocs = (projectId: string, sub?: string) => invoke<DocEntry[]>("list_docs", { projectId, sub });
 export const readDoc = (projectId: string, relPath: string) => invoke<string>("read_doc", { projectId, relPath });
@@ -103,7 +117,9 @@ export const clearGitCredentials = () => invoke<void>("clear_git_credentials");
 // ---------- ajustes ----------
 export const getSetting = (key: string) => invoke<string | null>("get_setting", { key });
 export const setSetting = (key: string, value: string) => invoke<void>("set_setting", { key, value });
-export const defaultPrompt = (kind: "system" | "decision" | "refine" | "review" | "diagram") =>
+export const defaultPrompt = (
+  kind: "system" | "decision" | "refine" | "review" | "diagram" | "scan" | "extract",
+) =>
   invoke<string>("default_prompt", { kind });
 export const listModels = () => invoke<ModelOption[]>("list_models");
 export const checkEngine = (binary?: string) => invoke<EngineStatus>("check_engine", { binary });

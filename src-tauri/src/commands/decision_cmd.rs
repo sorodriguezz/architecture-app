@@ -12,18 +12,24 @@ use crate::{fsops, git, paths, secrets};
 
 /// Todo lo que hay que resolver desde la base antes de invocar la CLI. Se arma en una sola
 /// sección con el mutex tomado, porque el `MutexGuard` de `std` no cruza un `.await`.
-struct RunSetup {
-    project: Project,
-    binary: String,
-    model: String,
-    tools: Vec<String>,
-    system_prompt: String,
-    prompt: String,
-    mcp_config: Option<String>,
-    auto_commit: bool,
+///
+/// Lo comparten todos los comandos que invocan la CLI, incluido `model_cmd`: duplicar esta
+/// resolución sería duplicar también la decisión de qué herramientas se permiten y qué MCP se
+/// materializa, que es justo lo que no puede divergir entre comandos.
+pub(super) struct RunSetup {
+    pub project: Project,
+    pub binary: String,
+    pub model: String,
+    pub tools: Vec<String>,
+    pub system_prompt: String,
+    pub prompt: String,
+    pub mcp_config: Option<String>,
+    /// El modelo del sistema ya renderizado como prosa, listo para inyectar en el contexto.
+    pub system_model: String,
+    pub auto_commit: bool,
 }
 
-fn prepare(
+pub(super) fn prepare(
     db: &State<Db>,
     project_id: &str,
     prompt_key: &str,
@@ -43,7 +49,10 @@ fn prepare(
 
     let servers = queries::list_mcp_servers(&conn, project_id).map_err(|e| e.to_string())?;
     let skills = queries::list_skills(&conn, project_id).map_err(|e| e.to_string())?;
+    let elements = queries::list_model_elements(&conn, project_id).map_err(|e| e.to_string())?;
     drop(conn);
+
+    let system_model = prompts::render_model(&elements);
 
     let tools = match tools_mode.as_str() {
         "none" => Vec::new(),
@@ -55,7 +64,17 @@ fn prepare(
     // sincroniza dentro del repo justo antes de correr.
     skills_cmd::sync_into_project(&skills, project_id, &project.path)?;
 
-    Ok(RunSetup { project, binary, model, tools, system_prompt, prompt, mcp_config, auto_commit })
+    Ok(RunSetup {
+        project,
+        binary,
+        model,
+        tools,
+        system_prompt,
+        prompt,
+        mcp_config,
+        system_model,
+        auto_commit,
+    })
 }
 
 /// Ejecuta el análisis completo. `run_id` lo genera el frontend para poder cancelar y para
@@ -78,7 +97,12 @@ pub async fn run_decision(
     };
 
     let repo_hint = Some(format!("El proyecto vive en `{}`.", setup.project.path));
-    let payload = prompts::build_brief_payload(&brief, &setup.project.context, repo_hint.as_deref());
+    let payload = prompts::build_brief_payload(
+        &brief,
+        &setup.project.context,
+        &setup.system_model,
+        repo_hint.as_deref(),
+    );
 
     let mut inv = ai::AiInvocation::new(&setup.prompt, &payload);
     inv.system_prompt = Some(&setup.system_prompt);

@@ -189,6 +189,7 @@ export const FAMILY_LABEL: Record<string, string> = {
   concurrencia: "De concurrencia",
   datos: "De datos",
   integracion: "De integración",
+  observabilidad: "De observabilidad",
   seguridad: "De seguridad",
   despliegue: "De despliegue",
 };

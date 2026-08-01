@@ -1,14 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="ArchFlow">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#4f46e5"/>
-      <stop offset="1" stop-color="#7c3aed"/>
-    </linearGradient>
+    <linearGradient id="af-edge-0" gradientUnits="userSpaceOnUse"
+        x1="512" y1="260" x2="730.24" y2="638">
+        <stop offset="0" stop-color="#FDBA3B"/><stop offset="1" stop-color="#F43F8E"/>
+      </linearGradient><linearGradient id="af-edge-1" gradientUnits="userSpaceOnUse"
+        x1="730.24" y1="638" x2="293.76" y2="638">
+        <stop offset="0" stop-color="#F43F8E"/><stop offset="1" stop-color="#8B5CF6"/>
+      </linearGradient><linearGradient id="af-edge-2" gradientUnits="userSpaceOnUse"
+        x1="293.76" y1="638" x2="512" y2="260">
+        <stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#22D3EE"/>
+      </linearGradient>
   </defs>
-  <rect width="1024" height="1024" rx="225" fill="url(#g)"/>
-  <rect x="494" y="261" width="36" height="450" rx="18" fill="#fff" opacity="0.43"/>
-  <rect x="246" y="261" width="532" height="107" rx="53" fill="#fff"/>
-  <rect x="307" y="445" width="410" height="107" rx="53" fill="#fff"/>
-  <rect x="369" y="629" width="286" height="107" rx="53" fill="#fff"/>
-  <circle cx="512" cy="139" r="59" fill="#facc15"/>
+  <g transform="translate(512 512) scale(1.55) translate(-512 -475)">
+    <path d="M 512 260 A 340 340 0 0 1 730.24 638" stroke="url(#af-edge-0)" stroke-width="78" stroke-linecap="round" fill="none"/><path d="M 730.24 638 A 340 340 0 0 1 293.76 638" stroke="url(#af-edge-1)" stroke-width="78" stroke-linecap="round" fill="none"/><path d="M 293.76 638 A 340 340 0 0 1 512 260" stroke="url(#af-edge-2)" stroke-width="78" stroke-linecap="round" fill="none"/>
+    <circle cx="512" cy="260" r="60" fill="#F4F7FF" stroke="#8B5CF6" stroke-width="12"/><circle cx="730.24" cy="638" r="60" fill="#F4F7FF" stroke="#8B5CF6" stroke-width="12"/><circle cx="293.76" cy="638" r="60" fill="#F4F7FF" stroke="#8B5CF6" stroke-width="12"/>
+    <path d="M 512 396 C 522 462 562 502 628 512 C 562 522 522 562 512 628 C 502 562 462 522 396 512 C 462 502 502 462 512 396 Z" fill="#FFFFFF" stroke="#8B5CF6" stroke-width="12" stroke-linejoin="round"/>
+  </g>
 </svg>

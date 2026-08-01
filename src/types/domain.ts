@@ -66,6 +66,37 @@ export interface DecisionSummary {
   updatedAt: string;
 }
 
+/** Las cinco clases de pieza del modelo del sistema. Espejo de los valores de `kind` en Rust. */
+export type ModelKind = "component" | "endpoint" | "integration" | "entity" | "debt";
+
+export type ModelStatus = "propuesto" | "construccion" | "produccion" | "deprecado";
+
+/** De dónde salió la pieza: sirve para saber cuánto confiar en el dato. */
+export type ModelSource = "manual" | "decision" | "scan";
+
+export interface ModelElement {
+  id: string;
+  projectId: string;
+  kind: ModelKind;
+  /** En los endpoints incluye el verbo: `POST /api/ordenes`. */
+  name: string;
+  summary: string;
+  status: ModelStatus;
+  tech: string;
+  owner: string;
+  /** Componente del que cuelga. */
+  parentId: string | null;
+  source: ModelSource;
+  /** Decisión que justificó esta pieza, cuando la hay. */
+  decisionId: string | null;
+  /** Ids de los elementos de los que depende, uno por línea. */
+  dependsOn: string;
+  location: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface McpServer {
   id: string;
   projectId: string;
@@ -146,6 +177,7 @@ export type PatternFamily =
   | "concurrencia"
   | "datos"
   | "integracion"
+  | "observabilidad"
   | "seguridad"
   | "despliegue";
 
@@ -176,6 +208,27 @@ export interface DecisionMeta {
   risks: Risk[];
   assumptions: string[];
   openQuestions: string[];
+}
+
+// ---------- lo que se parsea del bloque ```json archflow-model ----------
+
+/**
+ * Una pieza propuesta por el escaneo del repositorio o por la extracción desde una decisión.
+ *
+ * `parent` y `dependsOn` vienen por **nombre** y no por id porque el modelo no conoce los ids de
+ * la base; se resuelven al aceptar la propuesta.
+ */
+export interface ProposedElement {
+  kind: ModelKind;
+  name: string;
+  summary: string;
+  status: ModelStatus;
+  tech: string;
+  owner: string;
+  parent: string | null;
+  dependsOn: string[];
+  location: string;
+  notes: string;
 }
 
 export interface DiagramBlock {

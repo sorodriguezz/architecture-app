@@ -35,6 +35,87 @@ export function EmptyState({
   );
 }
 
+/**
+ * Paso numerado dentro de una vista de configuración.
+ *
+ * Los simuladores tienen muchos controles y ningún orden evidente entre ellos: numerarlos es lo
+ * que convierte una pantalla de parámetros sueltos en algo que se puede recorrer de arriba abajo
+ * sin saber de antemano qué hace cada campo.
+ */
+export function StepSection({
+  n,
+  title,
+  blurb,
+  aside,
+  children,
+}: {
+  n: number;
+  title: string;
+  blurb?: string;
+  aside?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="card p-3.5">
+      <header className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <span
+            className="mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white"
+            style={{ background: "var(--accent)" }}
+          >
+            {n}
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-[13.5px] leading-snug font-semibold text-ink">{title}</h3>
+            {blurb && <p className="mt-0.5 text-[11.5px] leading-relaxed text-faint">{blurb}</p>}
+          </div>
+        </div>
+        {aside && <div className="shrink-0">{aside}</div>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * Opción seleccionable que muestra su descripción en vez de esconderla en un `title`.
+ *
+ * Reemplaza a los `<select>` y a las hileras de chips donde la diferencia entre las opciones era
+ * justo lo que había que leer para elegir bien.
+ */
+export function ChoiceCard({
+  selected,
+  title,
+  blurb,
+  badge,
+  onClick,
+}: {
+  selected: boolean;
+  title: string;
+  blurb?: string;
+  badge?: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={`w-full rounded-lg border px-2.5 py-2 text-left transition-colors ${
+        selected
+          ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+          : "border-line bg-[var(--bg-elevated)] hover:bg-[var(--surface-hover)]"
+      }`}
+    >
+      <span className="flex items-center justify-between gap-2">
+        <span className={`text-[12.5px] font-semibold ${selected ? "text-accent-text" : "text-ink"}`}>{title}</span>
+        {badge}
+      </span>
+      {blurb && <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted">{blurb}</span>}
+    </button>
+  );
+}
+
 export function Field({
   label,
   hint,

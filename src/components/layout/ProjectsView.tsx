@@ -33,6 +33,8 @@ export function ProjectsView({ newProjectOpen, setNewProjectOpen }: { newProject
         </button>
       </header>
 
+      <HowItWorks />
+
       {projects.length === 0 ? (
         <EmptyState
           icon={<FolderGit2 size={38} />}
@@ -88,6 +90,49 @@ export function ProjectsView({ newProjectOpen, setNewProjectOpen }: { newProject
 
       <NewProjectModal open={newProjectOpen} onClose={() => setNewProjectOpen(false)} onCreated={add} />
     </div>
+  );
+}
+
+/**
+ * Los tres pasos del flujo completo, en la primera pantalla que se ve.
+ *
+ * La app abre en Proyectos, y sin esto lo único visible es una grilla de tarjetas: no dice que
+ * elegir un proyecto es el paso 1 de tres ni qué se obtiene al final. Es la respuesta a «entré y
+ * no supe qué hacer».
+ */
+const FLOW = [
+  {
+    title: "Elige un proyecto",
+    detail: "La carpeta con el repositorio donde van a quedar versionados los documentos.",
+  },
+  {
+    title: "Describe la decisión",
+    detail: "Un asistente pregunta el problema, las restricciones y qué atributos priorizas.",
+  },
+  {
+    title: "Recibe el documento",
+    detail: "Un ADR con matriz de trade-offs, diagramas, patrones aplicables y riesgos.",
+  },
+];
+
+function HowItWorks() {
+  return (
+    <section className="card mb-5 grid gap-3 p-4 sm:grid-cols-3">
+      {FLOW.map((step, i) => (
+        <div key={step.title} className="flex items-start gap-2.5">
+          <span
+            className="mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white"
+            style={{ background: "var(--accent)" }}
+          >
+            {i + 1}
+          </span>
+          <div className="min-w-0">
+            <p className="text-[12.5px] font-semibold text-ink">{step.title}</p>
+            <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{step.detail}</p>
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 

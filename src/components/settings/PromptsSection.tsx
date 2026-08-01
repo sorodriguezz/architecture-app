@@ -6,7 +6,7 @@ import { SettingKey } from "../../lib/tauri/commands";
 import { useUiStore } from "../../state/uiStore";
 import { SectionHeader } from "./SettingsView";
 
-type Kind = "system" | "decision" | "refine" | "review" | "diagram";
+type Kind = "system" | "decision" | "refine" | "review" | "diagram" | "scan" | "extract";
 
 const PROMPTS: { kind: Kind; key: string; label: string; description: string; warn?: boolean }[] = [
   {
@@ -39,6 +39,19 @@ const PROMPTS: { kind: Kind; key: string; label: string; description: string; wa
     key: SettingKey.promptDiagram,
     label: "Generación de diagrama",
     description: "El botón «Diagramar algo más».",
+  },
+  {
+    kind: "scan",
+    key: SettingKey.promptScan,
+    label: "Escaneo del repositorio",
+    description:
+      "Cómo busca las piezas del modelo del sistema dentro del código. El formato de salida se agrega aparte, así que editarlo aquí no lo rompe.",
+  },
+  {
+    kind: "extract",
+    key: SettingKey.promptExtract,
+    label: "Extracción desde una decisión",
+    description: "Qué piezas del sistema se derivan de un ADR ya aprobado.",
   },
 ];
 

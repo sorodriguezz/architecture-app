@@ -11,6 +11,7 @@ pnpm install
 pnpm typecheck                                   # tsc --noEmit
 pnpm build                                       # bundle del frontend
 node scripts/ui_smoke.mjs                        # recorre las vistas con el IPC simulado
+node scripts/gen_icons.mjs                       # regenera la marca (SVG + iconos)
 pnpm tauri dev                                   # app completa en caliente
 
 cd src-tauri && cargo fmt --all --check
@@ -54,6 +55,65 @@ Antes de dar por terminado un cambio: `pnpm typecheck`, `pnpm build` y, si tocas
 
 8. **Las utilidades CSS no deben colisionar con las clases de Mermaid.** Mermaid marca sus
    etiquetas de nodo con `class="label"`; por eso la clase del proyecto se llama `.field-label`.
+
+9. **La lista de familias de patrones vive en cinco lugares.** `PATTERN_FAMILIES` en
+   `src/lib/catalog.ts`, el enum del bloque JSON y la lista con viñetas de
+   `src-tauri/src/ai/prompts.rs`, `PatternFamily` en `src/types/domain.ts`, `FAMILY_LABEL` en
+   `src/lib/parseDecision.ts` y `FAMILY_ORDER` en `PatternsPanel.tsx`. Agregar una familia sin
+   tocar las cinco no rompe nada visiblemente: los patrones de esa familia caen al final,
+   agrupados bajo su id crudo.
+
+10. **Los `drivers` y `costs` de cada patrón son ids de `QUALITY_ATTRIBUTES`**, no texto libre.
+    Un id mal escrito no falla: el patrón simplemente deja de aparecer al filtrar por ese driver
+    y desaparece del cálculo de tensiones.
+
+11. **Los defaults del simulador son estimaciones, el `limit` es información.** En
+    `src/lib/simulation/components.ts` los números (`serviceMs`, `concurrency`, …) son órdenes de
+    magnitud editables y la UI lo dice explícitamente; el campo `limit` describe la restricción
+    real que manda en cada servicio y es lo que hace útil al catálogo. No conviertas los defaults
+    en afirmaciones ("Lambda hace X req/s") ni borres los `limit` al ajustar valores.
+
+12. **El motor de simulación es determinista por semilla.** `simulate()` no usa `Math.random`
+    directamente: todo el azar sale de `mulberry32(seed)`. Meter una llamada a `Math.random` hace
+    que dos corridas de la misma topología den distinto y que comparar arquitecturas deje de tener
+    sentido.
+
+13. **El contrato del modelo del sistema es un segundo contrato de salida.** `MODEL_CONTRACT` en
+    `src-tauri/src/ai/prompts.rs` pide un bloque ` ```json archflow-model `; `src/lib/parseModel.ts`
+    parsea exactamente eso. Falla igual de callado que el contrato de decisión: el escaneo del
+    repositorio y la extracción desde un ADR corren, se ven exitosos, y el diálogo de revisión
+    llega vacío. El contrato se concatena al prompt en `model_cmd.rs` y **no** dentro del prompt
+    editable, justamente para que personalizarlo desde Ajustes no pueda romperlo.
+
+14. **Las cinco clases y los cuatro estados del modelo viven en tres lugares.** Los valores de
+    `kind` y `status` están en los comentarios de `ModelElement` (`db/models.rs`), en
+    `MODEL_CONTRACT` de `prompts.rs`, y en `MODEL_KINDS` / `MODEL_STATUSES` de `src/lib/model.ts`.
+    Una clase que Rust acepte y el frontend no conozca se guarda sin error y no aparece en ninguna
+    pestaña; `parseModel.ts` descarta las que no reconoce.
+
+15. **`prepare()` inyecta el modelo del sistema en cada corrida.** `decision_cmd::prepare` resuelve
+    los elementos y los renderiza con `prompts::render_model`, y `build_brief_payload` los antepone
+    al problema. Es lo que hace que la decisión número siete sepa qué existe. Si un comando nuevo
+    invoca la CLI sin pasar por `prepare`, ese análisis pierde la memoria del proyecto y no hay
+    forma de notarlo salvo por lo que recomienda.
+
+16. **La marca es generada.** `public/archflow.svg` y todo `src-tauri/icons/` los escribe
+    `scripts/gen_icons.mjs` desde el SVG que vive dentro de ese script. Editar el SVG público a
+    mano se pierde en la siguiente corrida; el logo de la app lo referencia por URL justamente
+    para que no puedan divergir.
+
+    Regenerar los iconos **no** alcanza para que cambie el de la ventana y la barra de tareas:
+    `tauri_build::build()` embebe `icons/icon.ico` en el ejecutable y su build script solo se
+    vuelve a correr si cambia `tauri.conf.json` o `build.rs`, no si cambia `icons/`. Un `cargo
+    build` normal recompila el crate y deja el icono viejo adentro, sin ningún aviso. Después de
+    `node scripts/gen_icons.mjs` hay que tocar `src-tauri/build.rs` (o `cargo clean -p archflow`)
+    y recompilar.
+
+    Y el **orden de las entradas del `.ico` importa**: `generate_context!` se queda con
+    `entries()[0]` y ese único mapa de bits es el icono de la ventana (tao crea un `HICON` de ese
+    tamaño exacto y el escritorio lo reescala). Por eso `ICO_SIZES` empieza en 64 y no en 16 ni en
+    256. Reordenarlo no rompe nada visible en el escritorio —elige por tamaño— pero deja el icono
+    de la barra de tareas borroso o escalonado.
 
 ## Convenciones
 

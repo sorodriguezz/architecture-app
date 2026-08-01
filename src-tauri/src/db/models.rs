@@ -103,6 +103,44 @@ pub struct DecisionSummary {
     pub updated_at: String,
 }
 
+/// Una pieza del sistema real: un componente, un endpoint que expone, una integración externa,
+/// una entidad de datos o un ítem de deuda técnica.
+///
+/// Es lo que convierte a ArchFlow en algo con memoria: cada análisis recibe este inventario, así
+/// la decisión número siete sabe que ya existe una cola de eventos en vez de proponer otra.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelElement {
+    pub id: String,
+    pub project_id: String,
+    /// `component` | `endpoint` | `integration` | `entity` | `debt`
+    pub kind: String,
+    /// Nombre canónico. En los endpoints incluye el verbo: `POST /api/ordenes`.
+    pub name: String,
+    /// Qué es y de qué se hace cargo, en una línea.
+    pub summary: String,
+    /// `propuesto` | `construccion` | `produccion` | `deprecado`
+    pub status: String,
+    /// Tecnología concreta: el lenguaje, el motor, el protocolo.
+    pub tech: String,
+    /// Equipo o persona a cargo.
+    pub owner: String,
+    /// Componente del que cuelga. Los endpoints y las entidades siempre pertenecen a uno.
+    pub parent_id: Option<String>,
+    /// De dónde salió: `manual` | `decision` | `scan`. Sirve para saber cuánto confiar en el dato.
+    pub source: String,
+    /// Decisión que justificó esta pieza, cuando la hay.
+    pub decision_id: Option<String>,
+    /// Ids de los elementos de los que depende, uno por línea. Son las flechas del diagrama.
+    pub depends_on: String,
+    /// Dónde vive en el repositorio, si se sabe.
+    pub location: String,
+    /// Lo que no cabe en el resumen: SLA, qué pasa si se cae, por qué está así.
+    pub notes: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// Un servidor MCP configurado para un proyecto. Se materializa en un `--mcp-config` JSON
 /// justo antes de invocar la CLI.
 #[derive(Debug, Clone, Serialize, Deserialize)]

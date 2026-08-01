@@ -14,6 +14,8 @@ pub const KEY_PROMPT_DECISION: &str = "prompt_decision";
 pub const KEY_PROMPT_REFINE: &str = "prompt_refine";
 pub const KEY_PROMPT_REVIEW: &str = "prompt_review";
 pub const KEY_PROMPT_DIAGRAM: &str = "prompt_diagram";
+pub const KEY_PROMPT_SCAN: &str = "prompt_scan";
+pub const KEY_PROMPT_EXTRACT: &str = "prompt_extract";
 pub const KEY_GIT_NAME: &str = "git_user_name";
 pub const KEY_GIT_EMAIL: &str = "git_user_email";
 pub const KEY_AUTO_COMMIT: &str = "auto_commit";
@@ -42,6 +44,8 @@ pub fn default_prompt(kind: String) -> String {
         "refine" => prompts::DEFAULT_REFINE_PROMPT,
         "review" => prompts::DEFAULT_REVIEW_PROMPT,
         "diagram" => prompts::DEFAULT_DIAGRAM_PROMPT,
+        "scan" => prompts::DEFAULT_SCAN_PROMPT,
+        "extract" => prompts::DEFAULT_EXTRACT_PROMPT,
         _ => prompts::DEFAULT_DECISION_PROMPT,
     }
     .to_string()
